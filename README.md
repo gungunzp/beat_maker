@@ -1,3 +1,3 @@
 ## Beat Maker
 
-https://gungunzp.github.io/beat_maker/
+// TODO: host on Heroku

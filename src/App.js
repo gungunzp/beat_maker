@@ -7,30 +7,8 @@ const DEFAULT_TEMPO = 150;
 const MAX_METER_NUMERATOR = 10;
 const DEFAULT_METER_NUMERATOR = 4;
 const DEFAULT_METER_DENOMINATOR = 4;
-const FREQUENCY = 200;
-const DEFAULT_GAIN_VALUE = 0.5;
-
-const getInterval = tempo => (60 * 1000) / tempo;
-
-const getGain = () => {
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-  const oscillator = audioCtx.createOscillator();
-
-  const gain = audioCtx.createGain();
-
-  oscillator.connect(gain);
-  oscillator.frequency.value = FREQUENCY;
-  gain.connect(audioCtx.destination);
-
-  oscillator.start(0);
-
-  gain.gain.value = 0;
-
-  return gain;
-};
-
-const GLOBAL_GAIN = getGain();
+const FREQUENCY = 500;
+const MAX_GAIN_VALUE = 0.5;
 
 function App() {
   const [counter, setCounter] = useState(0);
@@ -38,30 +16,47 @@ function App() {
   const [tempo, setTempo] = useState(DEFAULT_TEMPO);
   const [meterNumerator, setMeterNumerator] = useState(DEFAULT_METER_NUMERATOR);
 
-  const [gainState, setGainState] = useState(GLOBAL_GAIN);
+  const [gainState, setGainState] = useState({});
+  const [currentMaxVolume, setCurrentMaxVolume] = useState(MAX_GAIN_VALUE / 2);
 
   useEffect(() => {
-    ///////////////////////////////////////
+    let oscillator = {};
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    oscillator = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    oscillator.connect(gain);
+    oscillator.frequency.value = FREQUENCY;
+    gain.connect(audioCtx.destination);
+
+    oscillator.start(0);
+
+    gain.gain.value = 0;
+
+    setGainState(gain.gain);
+
     return () => {
-      // oscillator.stop(0);
-      // gainState.gain.value = 0;
-      // setGainState(gainState);
+      oscillator.stop(0);
     };
   }, []);
 
   const setGainValue = useCallback(
     value => {
-      gainState.gain.value = value;
+      gainState.value = value;
       setGainState(gainState);
     },
     [gainState]
   );
 
+  const getInterval = useCallback(() => (60 * 1000) / tempo, [tempo]);
+
   const doTick = useCallback(() => {
     setCounter(counter => (counter + 1 > meterNumerator ? 1 : counter + 1));
-    setGainValue(DEFAULT_GAIN_VALUE);
-    setTimeout(() => setGainValue(0), getInterval(tempo) / 2);
-  }, [counter]);
+    setGainValue(currentMaxVolume);
+    setTimeout(() => setGainValue(0), getInterval() / 2);
+  }, [meterNumerator, setGainValue, currentMaxVolume, getInterval]);
 
   const startMetronome = useCallback(() => {
     if (timerId === null) {
@@ -71,22 +66,22 @@ function App() {
       setTimerId(
         setInterval(() => {
           doTick();
-        }, getInterval(tempo))
+        }, getInterval())
       );
     } else {
       console.log('blocked');
     }
-  }, [counter, tempo]);
+  }, [doTick, timerId, getInterval]);
 
   const stopMetronome = useCallback(() => {
     clearInterval(timerId);
     setTimerId(null);
     setCounter(0);
-    gainState.gain.value = 0;
+    gainState.value = 0;
     setGainState(gainState);
 
     console.log('stopped');
-  }, [counter]);
+  }, [gainState, timerId]);
 
   const setTempoHandler = useCallback(
     e => {
@@ -94,29 +89,29 @@ function App() {
       setTempo(e.target.value);
       console.log('setTempoHandler');
     },
-    [counter, timerId, tempo]
+    [stopMetronome]
   );
 
-  // const setTempoHandler = e => {
-  //   stopMetronome();
-  //   setTempo(e.target.value);
-  //   console.log('setTempoHandler');
-  // };
+  const setMeterNumeratorHandler = useCallback(
+    e => {
+      stopMetronome();
+      setMeterNumerator(+e.target.value);
+    },
+    [stopMetronome]
+  );
 
-  // const setMeterNumeratorHandler = useCallback(e => {
-  //   stopMetronome();
-  //   setMeterNumerator(+e.target.value);
-  // }, []);
+  const setMaxGainValueHandler = useCallback(
+    e => {
+      stopMetronome();
+      setCurrentMaxVolume((+e.target.value * MAX_GAIN_VALUE) / 100);
+    },
+    [stopMetronome]
+  );
 
-  const setMeterNumeratorHandler = e => {
-    stopMetronome();
-    setMeterNumerator(+e.target.value);
-  };
-
-  // console.log(' ');
-  // console.log('RENDER counter', counter);
-  // console.log('App -> meterNumerator', meterNumerator);
-  // console.log('--- RENDER gainState', gainState);
+  const getVolumeInPercents = useCallback(
+    () => Math.round((currentMaxVolume / MAX_GAIN_VALUE) * 100),
+    [currentMaxVolume]
+  );
 
   return (
     <div className="app-container">
@@ -126,7 +121,24 @@ function App() {
       <button id="stop-btn" onClick={stopMetronome}>
         Stop
       </button>
-      <div className="tempo">
+      <div>
+        Volume:
+        <input
+          type="number"
+          onChange={setMaxGainValueHandler}
+          value={getVolumeInPercents()}
+          min={0}
+          max={100}
+        />
+      </div>
+      <input
+        type="range"
+        onChange={setMaxGainValueHandler}
+        value={getVolumeInPercents()}
+        min={0}
+        max={100}
+      />
+      <div>
         <input
           type="number"
           onChange={setTempoHandler}
@@ -134,7 +146,7 @@ function App() {
           min={MIN_TEMPO}
           max={MAX_TEMPO}
         />
-        bpm
+        BPM
       </div>
       <input
         type="range"
@@ -144,14 +156,15 @@ function App() {
         max={MAX_TEMPO}
       />
       <div>
-        {/* <input
+        Meter:
+        <input
           type="number"
           onChange={setMeterNumeratorHandler}
           value={meterNumerator}
           min="1"
           max={MAX_METER_NUMERATOR}
-        /> */}
-        {DEFAULT_METER_NUMERATOR} / {DEFAULT_METER_DENOMINATOR}
+        />{' '}
+        / {DEFAULT_METER_DENOMINATOR}
       </div>
       <div className="sequencer">
         {[...Array(meterNumerator)].map((el, i) => {
